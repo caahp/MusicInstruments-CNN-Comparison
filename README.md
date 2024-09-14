@@ -1,4 +1,4 @@
-# **🎶 Reconhecimento de Instrumentos Musicais usando CNN: Transfer Learning vs Sem Transfer Learning**
+# **🎶 Classificador de Instrumentos Musicais usando CNN: Transfer Learning vs Sem Transfer Learning**
 
 Este projeto explora a aplicação de Redes Neurais Convolucionais (CNNs) no reconhecimento de instrumentos musicais. O objetivo é classificar imagens de sete instrumentos, incluindo violão, guitarra, trompete, flauta, bateria, piano e saxofone.
 
