@@ -53,6 +53,7 @@ def custom_preprocessing(image):
     image = img_to_array(image).astype('float32') / 255.0
     return image
 
+
 # Configuração dos geradores de imagem com aumento de dados
 train_datagen = ImageDataGenerator(
     preprocessing_function=custom_preprocessing,
@@ -62,30 +63,43 @@ train_datagen = ImageDataGenerator(
     shear_range=0.3,
     zoom_range=0.4,
     horizontal_flip=True,
-    vertical_flip=True,  # Adicionando inversão vertical
+    vertical_flip=True,
     brightness_range=[0.7, 1.3],
-    fill_mode='nearest'
+    fill_mode='nearest',
+    validation_split=0.2  # Agora o conjunto de validação vem dos dados de treino
 )
 
-val_datagen = ImageDataGenerator(preprocessing_function=custom_preprocessing)
+# Gerador de teste sem aumento de dados
+test_datagen = ImageDataGenerator(preprocessing_function=custom_preprocessing)
 
-# Diretórios dos dados de treino e validação 
+# Diretórios dos dados de treino e teste
 train_dir = '/kaggle/input/instrumentsdataset/train'
-val_dir = '/kaggle/input/instrumentsdataset/validation'
+test_dir = '/kaggle/input/instrumentsdataset/validation'  # Agora a pasta validation será usada para teste
 
-# Geradores de treino e validação
+# Geradores de treino e validação a partir da pasta train
 train_generator = train_datagen.flow_from_directory(
     train_dir,
     target_size=(150, 150),
     batch_size=32,
-    class_mode='categorical'
+    class_mode='categorical',
+    subset='training'  # Subconjunto de treino
 )
 
-val_generator = val_datagen.flow_from_directory(
-    val_dir,
+val_generator = train_datagen.flow_from_directory(
+    train_dir,
     target_size=(150, 150),
     batch_size=32,
-    class_mode='categorical'
+    class_mode='categorical',
+    subset='validation'  # Subconjunto de validação
+)
+
+# Gerador de teste
+test_generator = test_datagen.flow_from_directory(
+    test_dir,
+    target_size=(150, 150),
+    batch_size=32,
+    class_mode='categorical',
+    shuffle=False  # Para garantir a correspondência entre previsões e rótulos verdadeiros
 )
 
 # Definindo o modelo de rede neural
@@ -113,77 +127,49 @@ model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accur
 early_stopping = EarlyStopping(monitor='val_loss', patience=250, restore_best_weights=True)
 
 # Treinando o modelo com os dados processados
-try:
-    history = model.fit(
-        train_generator,
-        steps_per_epoch=train_generator.samples // train_generator.batch_size,
-        epochs=600,
-        validation_data=val_generator,
-        validation_steps=val_generator.samples // val_generator.batch_size,
-        callbacks=[early_stopping]
-    )
-except Exception as e:
-    print(f"Ocorreu um erro durante o treinamento: {e}")
+history = model.fit(
+    train_generator,
+    steps_per_epoch=train_generator.samples // train_generator.batch_size,
+    epochs=600,
+    validation_data=val_generator,
+    validation_steps=val_generator.samples // val_generator.batch_size,
+    callbacks=[early_stopping]
+)
 
 # Salvando o modelo treinado
 model.save('modelo_instrumentos_melhorado.h5')
 
-# Avaliação final com os dados de validação
-try:
-    loss, acc = model.evaluate(val_generator)
-    print(f'Acurácia: {acc*100:.2f}%')
-except Exception as e:
-    print(f"Ocorreu um erro durante a avaliação: {e}")
+# Avaliação final com o conjunto de teste
+test_loss, test_acc = model.evaluate(test_generator)
+print(f'Acurácia no conjunto de teste: {test_acc * 100:.2f}%')
 
-# Plotando as curvas de acurácia e perda
-plt.figure(figsize=(12, 4))
-plt.subplot(1, 2, 1)
-plt.plot(history.history['accuracy'], label='Acurácia Treino')
-plt.plot(history.history['val_accuracy'], label='Acurácia Validação')
-plt.title('Curva de Acurácia')
-plt.xlabel('Épocas')
-plt.ylabel('Acurácia')
-plt.legend()
+# Gerando previsões no conjunto de teste
+test_generator.reset()
+predictions = model.predict(test_generator, steps=test_generator.samples // test_generator.batch_size + 1)
+predicted_classes = np.argmax(predictions, axis=1)
+true_classes = test_generator.classes
+class_labels = list(test_generator.class_indices.keys())
 
-plt.subplot(1, 2, 2)
-plt.plot(history.history['loss'], label='Perda Treino')
-plt.plot(history.history['val_loss'], label='Perda Validação')
-plt.title('Curva de Perda')
-plt.xlabel('Épocas')
-plt.ylabel('Perda')
-plt.legend()
+# Plotando a matriz de confusão
+conf_matrix = confusion_matrix(true_classes, predicted_classes)
+plt.figure(figsize=(10, 8))
+sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues', xticklabels=class_labels, yticklabels=class_labels)
+plt.xlabel('Predição')
+plt.ylabel('Real')
+plt.title('Matriz de Confusão')
 plt.show()
 
-# Gerando previsões no conjunto de validação
-val_generator.reset()
-try:
-    predictions = model.predict(val_generator, steps=val_generator.samples // val_generator.batch_size + 1)
-    predicted_classes = np.argmax(predictions, axis=1)
-    true_classes = val_generator.classes
-    class_labels = list(val_generator.class_indices.keys())
+# Relatório de classificação
+print(classification_report(true_classes, predicted_classes, target_names=class_labels))
 
-    # Plotando a matriz de confusão
-    conf_matrix = confusion_matrix(true_classes, predicted_classes)
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues', xticklabels=class_labels, yticklabels=class_labels)
-    plt.xlabel('Predição')
-    plt.ylabel('Real')
-    plt.title('Matriz de Confusão')
-    plt.show()
+# Cálculo das métricas
+accuracy = accuracy_score(true_classes, predicted_classes)
+precision = precision_score(true_classes, predicted_classes, average='weighted')
+recall = recall_score(true_classes, predicted_classes, average='weighted')
+f1 = f1_score(true_classes, predicted_classes, average='weighted')
 
-    # Relatório de classificação
-    print(classification_report(true_classes, predicted_classes, target_names=class_labels))
-
-    # Cálculo das métricas
-    accuracy = accuracy_score(true_classes, predicted_classes)
-    precision = precision_score(true_classes, predicted_classes, average='weighted')
-    recall = recall_score(true_classes, predicted_classes, average='weighted')
-    f1 = f1_score(true_classes, predicted_classes, average='weighted')
-
-    # Exibindo as métricas
-    print(f'Acurácia: {accuracy:.2f}')
-    print(f'Precisão: {precision:.2f}')
-    print(f'Recall: {recall:.2f}')
-    print(f'F1 Score: {f1:.2f}')
-except Exception as e:
-    print(f"Ocorreu um erro durante a geração de previsões: {e}")
+# Exibindo as métricas
+print(f'Acurácia: {accuracy:.2f}')
+print(f'Precisão: {precision:.2f}')
+print(f'Recall: {recall:.2f}')
+print(f'F1 Score: {f1:.2f}')
