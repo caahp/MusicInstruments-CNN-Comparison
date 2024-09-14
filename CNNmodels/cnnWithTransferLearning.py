@@ -1,3 +1,4 @@
+# Importando bibliotecas necessárias
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 import tensorflow as tf
 from tensorflow.keras.applications import InceptionV3
@@ -7,10 +8,11 @@ from sklearn.metrics import confusion_matrix, classification_report, accuracy_sc
 import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
+import cv2
+from tensorflow.keras.preprocessing.image import img_to_array
 
 # Função para aplicar estiramento de contraste
 def contrast_stretching(image):
-    # Normaliza a imagem para valores entre 0 e 255
     xp = [0, 64, 128, 192, 255]
     fp = [0, 16, 128, 240, 255]
     stretched_image = np.interp(image, xp, fp).astype(np.uint8)
@@ -18,36 +20,23 @@ def contrast_stretching(image):
 
 # Função para aplicar filtros de contorno e correção de cor
 def add_edge_detection(image):
-    # Converte a imagem para escala de cinza
     gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-    # Certifica-se de que a imagem em escala de cinza é do tipo correto
     gray = gray.astype(np.uint8)
-    # Equaliza o histograma da imagem para melhorar contraste
     gray = cv2.equalizeHist(gray)
-    # Aplicando filtro gaussiano para suavizar a imagem
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    # Aplicando detecção de bordas (Canny)
     edges = cv2.Canny(blurred, 100, 200)
-    # Convertendo as bordas para 3 canais
     edges_colored = cv2.cvtColor(edges, cv2.COLOR_GRAY2RGB)
-    # Garantindo que ambas as imagens tenham o mesmo tipo e profundidade
     image = image.astype(np.float32)
     edges_colored = edges_colored.astype(np.float32)
-    # Combina a imagem original com as bordas para destacar formas
     combined = cv2.addWeighted(image, 0.8, edges_colored, 0.2, 0)
-    # Converte a imagem combinada de volta para o formato de imagem padrão
     combined = combined.astype(np.uint8)
     return combined
 
 # Função de pré-processamento personalizada
 def custom_preprocessing(image):
-    # Redimensionando a imagem
     image = cv2.resize(image, (150, 150))
-    # Aplicando estiramento de contraste
     image = contrast_stretching(image)
-    # Aplicando detecção de bordas e correção de cor
     image = add_edge_detection(image)
-    # Normalizando a imagem
     image = img_to_array(image).astype('float32') / 255.0
     return image
 
@@ -62,28 +51,42 @@ train_datagen = ImageDataGenerator(
     horizontal_flip=True,
     vertical_flip=True, 
     brightness_range=[0.7, 1.3],
-    fill_mode='nearest'
+    fill_mode='nearest',
+    validation_split=0.2  # 20% dos dados serão usados para validação
 )
 
-val_datagen = ImageDataGenerator(preprocessing_function=custom_preprocessing)
+# Gerador para o conjunto de teste sem aumento de dados
+test_datagen = ImageDataGenerator(preprocessing_function=custom_preprocessing)
 
-# Diretórios dos dados de treino e validação 
-train_dir = '/kaggle/input/instrumentsdataset/train'
-val_dir = '/kaggle/input/instrumentsdataset/validation'
+# Diretórios dos dados de treino e teste
+data_dir = '/kaggle/input/instrumentsdataset/train'
+test_dir = '/kaggle/input/instrumentsdataset/validation'
 
-# Geradores de dados com augmentation
+# Gerador de treino
 train_generator = train_datagen.flow_from_directory(
-    train_dir,
+    data_dir,
     target_size=(150, 150),
     batch_size=32,
-    class_mode='categorical'
+    class_mode='categorical',
+    subset='training'  # Subconjunto de treino
 )
 
-val_generator = val_datagen.flow_from_directory(
-    val_dir,
+# Gerador de validação
+val_generator = train_datagen.flow_from_directory(
+    data_dir,
     target_size=(150, 150),
     batch_size=32,
-    class_mode='categorical'
+    class_mode='categorical',
+    subset='validation'  # Subconjunto de validação
+)
+
+# Gerador de teste
+test_generator = test_datagen.flow_from_directory(
+    test_dir,
+    target_size=(150, 150),
+    batch_size=32,
+    class_mode='categorical',
+    shuffle=False  # Não misturar os dados para garantir correspondência nas métricas
 )
 
 # Carregando o modelo InceptionV3 pré-treinado, sem as camadas de saída
@@ -98,7 +101,7 @@ x = GlobalAveragePooling2D()(x)
 x = Dropout(0.5)(x)
 x = Dense(512, activation='relu')(x)
 x = Dropout(0.5)(x)
-predictions = Dense(7, activation='softmax')(x)
+predictions = Dense(train_generator.num_classes, activation='softmax')(x)
 
 # Criando o modelo completo
 model = Model(inputs=base_model.input, outputs=predictions)
@@ -117,16 +120,45 @@ history = model.fit(
     validation_steps=val_generator.samples // val_generator.batch_size
 )
 
-# Avaliação final
-loss, acc = model.evaluate(val_generator)
-print(f'Acurácia: {acc*100:.2f}%')
+# Obtendo os dados do histórico de treino
+loss = history.history['loss']
+val_loss = history.history['val_loss']
+epochs = range(1, len(loss) + 1)
 
-# Gerando previsões no conjunto de validação
-val_generator.reset()
-predictions = model.predict(val_generator, steps=val_generator.samples // val_generator.batch_size + 1)
+# Plotando gráfico de loss para treino e validação
+plt.figure(figsize=(10, 6))
+plt.plot(epochs, loss, 'b', label='Train Loss')
+plt.plot(epochs, val_loss, 'r', label='Validation Loss')
+plt.title('Training and Validation Loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+plt.grid(True)
+plt.show()
+
+accuracy = history.history['accuracy']
+val_accuracy = history.history['val_accuracy']
+
+plt.figure(figsize=(10, 6))
+plt.plot(epochs, accuracy, 'b', label='Train Accuracy')
+plt.plot(epochs, val_accuracy, 'r', label='Validation Accuracy')
+plt.title('Training and Validation Accuracy')
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.legend()
+plt.grid(True)
+plt.show()
+
+# Avaliação final no conjunto de teste
+test_loss, test_acc = model.evaluate(test_generator)
+print(f'Acurácia no conjunto de teste: {test_acc*100:.2f}%')
+
+# Gerando previsões no conjunto de teste
+test_generator.reset()
+predictions = model.predict(test_generator, steps=test_generator.samples // test_generator.batch_size + 1)
 predicted_classes = np.argmax(predictions, axis=1)
-true_classes = val_generator.classes
-class_labels = list(val_generator.class_indices.keys())
+true_classes = test_generator.classes
+class_labels = list(test_generator.class_indices.keys())
 
 # Plotando a matriz de confusão
 conf_matrix = confusion_matrix(true_classes, predicted_classes)

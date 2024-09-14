@@ -139,6 +139,35 @@ history = model.fit(
 # Salvando o modelo treinado
 model.save('modelo_instrumentos_melhorado.h5')
 
+# Obtendo os dados do histórico de treino
+loss = history.history['loss']
+val_loss = history.history['val_loss']
+epochs = range(1, len(loss) + 1)
+
+# Plotando gráfico de loss para treino e validação
+plt.figure(figsize=(10, 6))
+plt.plot(epochs, loss, 'b', label='Train Loss')
+plt.plot(epochs, val_loss, 'r', label='Validation Loss')
+plt.title('Training and Validation Loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+plt.grid(True)
+plt.show()
+
+accuracy = history.history['accuracy']
+val_accuracy = history.history['val_accuracy']
+
+plt.figure(figsize=(10, 6))
+plt.plot(epochs, accuracy, 'b', label='Train Accuracy')
+plt.plot(epochs, val_accuracy, 'r', label='Validation Accuracy')
+plt.title('Training and Validation Accuracy')
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.legend()
+plt.grid(True)
+plt.show()
+
 # Avaliação final com o conjunto de teste
 test_loss, test_acc = model.evaluate(test_generator)
 print(f'Acurácia no conjunto de teste: {test_acc * 100:.2f}%')
