@@ -21,8 +21,8 @@ Este projeto visa comparar a eficácia entre redes CNN personalizadas e aquelas 
 3. Execute o notebook no Kaggle ou em um ambiente com suporte a GPUs para otimizar o tempo de execução.
 
 O link para acesso ao conjunto de dados e execução no Kaggle será fornecido aqui:  
-- [Dataset](#https://www.kaggle.com/datasets/caahps/instrumentsdataset/settings)
-- [Modelo](#https://www.kaggle.com/code/caahps/musicinstrumentsmodels)
+- [Dataset](https://www.kaggle.com/datasets/caahps/instrumentsdataset/settings)
+- [Modelo](https://www.kaggle.com/code/caahps/musicinstrumentsmodels)
 
 ## **🖥️ Requisitos**
 - Recomendamos o uso de uma GPU para treinar o modelo, pois pode ser computacionalmente intensivo.
